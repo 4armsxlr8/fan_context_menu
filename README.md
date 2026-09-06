@@ -1,17 +1,21 @@
 # pinterest_long_press_menu
 
-A new Flutter project.
+Pinterest風の長押しメニューの操作感を再現するFlutterサンプルです。ピンを長押し→指を離さずスライド→離して実行、という一連の操作を再現します。
 
-## Getting Started
+## 起動方法
 
-This project is a starting point for a Flutter application.
+```sh
+flutter run
+```
 
-A few resources to get you started if this is your first Flutter project:
+iOS・Androidのスマートフォン縦向きを対象としています。Webでも確認用に起動できます。
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## 再現範囲
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- ピンを500ms長押しすると、画面が暗転し、長押ししたピンが浮き上がって表示されます。同時に押下点の周りに、非表示・リアクション・共有・保存の4つのアクションボタンが扇状に表示されます。
+- 指を離さずにスライドし、いずれかのアクションボタンに指を乗せると、そのボタンが強調表示されます。
+- 強調表示したまま指を離すと実行となり、画面下部に「『(ピン名)』を(操作名)」というメッセージが表示されます。
+- アクションボタンの外で指を離すと、何も実行せずに長押しメニューを閉じます。
+- Webではマウスの押しっぱなしを長押しとして扱います。
+
+4つの操作はすべてダミーで、実行してもピンの内容は変化しません。画面下部のナビゲーションは見た目のみで、タップしても画面遷移しません。
