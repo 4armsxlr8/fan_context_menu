@@ -1,324 +1,208 @@
-import 'package:flutter/material.dart';
+import 'dart:ui' show lerpDouble;
 
-import 'keys.dart';
-import 'long_press_menu_metrics.dart';
+import 'package:flutter/widgets.dart';
+
+import 'fan_context_menu_action.dart';
+import 'fan_context_menu_style.dart';
 import 'menu_geometry.dart';
-import 'pin.dart';
 
-/// 長押しメニューの開閉のうち、位置・拡大縮小の変化に使うカーブ。
+/// The curve used for the position and scale changes while the long-press
+/// menu opens/closes.
 const _openMotionCurve = Curves.easeOut;
 
-/// 長押しメニューの開閉のうち、フェードの変化に使うカーブ。
+/// The curve used for the fade change while the long-press menu opens/closes.
 const _openFadeCurve = Curves.ease;
 
-/// 長押しメニューを構成する円形のアクションボタン1つ。
+/// One circular action button that makes up the long-press menu.
 ///
-/// [highlighted] が true のとき白背景・黒アイコン・[LongPressMenuMetrics.highlightScale]
-/// 倍で表示する。false のときは [LongPressMenuMetrics.actionButtonColor] 背景・白アイコン。
+/// When [highlighted] is true, it is drawn with a
+/// [FanContextMenuStyle.highlightedActionButtonColor] background, a
+/// [FanContextMenuStyle.highlightedIconColor] icon, and scaled by
+/// [FanContextMenuStyle.highlightScale]. When false, it uses a
+/// [FanContextMenuStyle.actionButtonColor] background and a
+/// [FanContextMenuStyle.iconColor] icon.
+///
+/// The outermost widget is `Semantics(label: action.semanticLabel)`, which
+/// lets a screen reader find this button uniquely.
 class ActionButtonView extends StatelessWidget {
   const ActionButtonView({
     super.key,
     required this.action,
     required this.highlighted,
+    required this.style,
   });
 
-  /// このボタンが表す操作。
-  final PinAction action;
+  /// The operation this button represents.
+  final FanContextMenuAction action;
 
-  /// 指が乗って強調されているか。
+  /// Whether a finger is on it, highlighting it.
   final bool highlighted;
 
-  static const _icons = <PinAction, IconData>{
-    PinAction.hide: Icons.visibility_off_outlined,
-    PinAction.reaction: Icons.favorite_border,
-    PinAction.share: Icons.ios_share,
-    PinAction.save: Icons.bookmark_border,
-  };
+  /// Look-and-feel and timing values.
+  final FanContextMenuStyle style;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedScale(
-      scale: highlighted ? LongPressMenuMetrics.highlightScale : 1.0,
-      duration: LongPressMenuMetrics.highlightDuration,
-      curve: Curves.easeOut,
-      child: AnimatedContainer(
-        duration: LongPressMenuMetrics.highlightDuration,
+    return Semantics(
+      label: action.semanticLabel,
+      child: AnimatedScale(
+        scale: highlighted ? style.highlightScale : 1.0,
+        duration: style.highlightDuration,
         curve: Curves.easeOut,
-        width: LongPressMenuMetrics.buttonDiameter,
-        height: LongPressMenuMetrics.buttonDiameter,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: highlighted
-              ? LongPressMenuMetrics.highlightedActionButtonColor
-              : LongPressMenuMetrics.actionButtonColor,
-        ),
-        child: Icon(
-          _icons[action],
-          color: highlighted ? Colors.black : Colors.white,
+        child: AnimatedContainer(
+          duration: style.highlightDuration,
+          curve: Curves.easeOut,
+          width: style.buttonDiameter,
+          height: style.buttonDiameter,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: highlighted
+                ? style.highlightedActionButtonColor
+                : style.actionButtonColor,
+          ),
+          child: IconTheme(
+            data: IconThemeData(
+              color: highlighted ? style.highlightedIconColor : style.iconColor,
+            ),
+            child: action.icon,
+          ),
         ),
       ),
     );
   }
 }
 
-/// 長押しメニュー表示中に、押したピン以外の画面全体を暗くする層。
+/// The layer that darkens the host's whole area while the long-press menu is
+/// shown.
 ///
-/// [absorbing] が true のあいだ [AbsorbPointer] でポインタを吸収し、フィードの
-/// スクロールや他のピン・ナビへのタップを遮る。閉じるアニメーションの最中は
-/// 呼び出し側が false を渡し、離した直後の操作をすぐ通す。[openProgress]
-/// (0が閉、1が開) に応じて不透明度をフェードする。
+/// While [absorbing] is true, it absorbs pointer input with [AbsorbPointer],
+/// blocking scrolling and other taps within the host. During the close
+/// animation, the caller passes false, letting an action right after the
+/// finger lifts go through immediately. The opacity fades up to
+/// [FanContextMenuStyle.dimmingOpacity] according to [openProgress] (0 is
+/// closed, 1 is open).
 class DimmingLayer extends StatelessWidget {
   const DimmingLayer({
     super.key,
     required this.openProgress,
     required this.absorbing,
+    required this.style,
   });
 
-  /// 開閉の進み具合 (0 が閉、1 が開)。
+  /// How far open/close has progressed (0 is closed, 1 is open).
   final double openProgress;
 
-  /// ポインタを吸収するか。
+  /// Whether to absorb pointer input.
   final bool absorbing;
+
+  /// Look-and-feel and timing values.
+  final FanContextMenuStyle style;
 
   @override
   Widget build(BuildContext context) {
     final opacity =
-        _openFadeCurve.transform(openProgress) *
-        LongPressMenuMetrics.dimmingOpacity;
+        _openFadeCurve.transform(openProgress) * style.dimmingOpacity;
     return AbsorbPointer(
       absorbing: absorbing,
-      child: Container(color: Colors.black.withValues(alpha: opacity)),
-    );
-  }
-}
-
-/// ピンの背景色・角丸。フィードのピンと [LiftedPinView] が共用する。
-BoxDecoration pinDecoration(Pin pin) =>
-    BoxDecoration(color: pin.color, borderRadius: BorderRadius.circular(16));
-
-/// 長押しで押したピンの複製。
-///
-/// 元のピンと同じ位置・大きさに置かれ、中心を軸に拡大・傾き・影を付けて浮かせる。
-/// [openProgress] (0が閉、1が開) に応じて、拡大・傾きなしの状態から
-/// [LongPressMenuMetrics.liftScale] / [LongPressMenuMetrics.tiltDegrees] まで動く。
-class LiftedPinView extends StatelessWidget {
-  const LiftedPinView({
-    super.key,
-    required this.pin,
-    required this.openProgress,
-  });
-
-  /// 浮き上がらせるピン。
-  final Pin pin;
-
-  /// 開閉の進み具合 (0 が閉、1 が開)。
-  final double openProgress;
-
-  @override
-  Widget build(BuildContext context) {
-    final motion = _openMotionCurve.transform(openProgress);
-    final scale = Tween<double>(
-      begin: 1.0,
-      end: LongPressMenuMetrics.liftScale,
-    ).transform(motion);
-    final tiltDegrees = LongPressMenuMetrics.tiltDegrees * motion;
-    return Transform(
-      alignment: Alignment.center,
-      transform: Matrix4.identity()
-        ..scaleByDouble(scale, scale, 1, 1)
-        ..rotateZ(degreesToRadians(tiltDegrees)),
       child: Container(
-        decoration: pinDecoration(pin).copyWith(
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black54,
-              blurRadius: 16,
-              offset: Offset(0, 8),
-            ),
-          ],
-        ),
+        color: const Color(0xFF000000).withValues(alpha: opacity),
       ),
     );
   }
 }
 
-/// 開いている長押しメニューの中身 (暗転・浮き上がったピン・4つのアクションボタン)。
+/// The frame for the lifted copy of the child that was long-pressed.
 ///
-/// 呼び出し側 ([FeedPage]) が [openProgress] (0が閉、1が開) を渡す。ここではその
-/// 進み具合に応じたフェード・移動・拡大縮小と、指が動くたびの強調を行う。
-class LongPressMenuView extends StatelessWidget {
-  const LongPressMenuView({
+/// The caller places it at the same position and size as the original
+/// target, e.g. with [Positioned.fromRect]. It lifts [child] by scaling and
+/// tilting it around its center. According to [openProgress] (0 is closed, 1
+/// is open), it moves from no scale/tilt up to
+/// [FanContextMenuStyle.liftScale] / [FanContextMenuStyle.tiltDegrees].
+class LiftedChildView extends StatelessWidget {
+  const LiftedChildView({
     super.key,
-    required this.pin,
-    required this.pinRect,
-    required this.pressPoint,
-    required this.buttonCenters,
-    required this.highlightedAction,
+    required this.child,
     required this.openProgress,
-    required this.absorbing,
+    required this.style,
   });
 
-  /// 押されて浮き上がっているピン。
-  final Pin pin;
+  /// The widget being lifted (child, or the result of liftedChildBuilder).
+  final Widget child;
 
-  /// 元のピンの位置・大きさ。
-  final Rect pinRect;
-
-  /// 長押しが認識された押下点。アクションボタンはここから現れ、ここへ戻る。
-  final Offset pressPoint;
-
-  /// アクションボタン中心 (開ききったときの位置)。[PinAction.values] の順。
-  final List<Offset> buttonCenters;
-
-  /// いま強調されているアクション。無ければ null。
-  final PinAction? highlightedAction;
-
-  /// 開閉の進み具合 (0 が閉、1 が開)。
+  /// How far open/close has progressed (0 is closed, 1 is open).
   final double openProgress;
 
-  /// [DimmingLayer] がポインタを吸収するか。
-  final bool absorbing;
+  /// Look-and-feel and timing values.
+  final FanContextMenuStyle style;
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: DimmingLayer(
-            key: SampleKeys.dimming,
-            openProgress: openProgress,
-            absorbing: absorbing,
-          ),
+    final motion = _openMotionCurve.transform(openProgress);
+    final scale = lerpDouble(1.0, style.liftScale, motion)!;
+    final tiltDegrees = style.tiltDegrees * motion;
+    return Transform(
+      alignment: Alignment.center,
+      transform: Matrix4.identity()
+        ..scaleByDouble(scale, scale, 1, 1)
+        ..rotateZ(degreesToRadians(tiltDegrees)),
+      // Placing this inside Transform makes the shadow scale and tilt along
+      // with it. The shape of child is unknown, so a rectangular shadow is
+      // drawn behind it.
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x8A000000),
+              blurRadius: 16,
+              offset: Offset(0, 8),
+            ),
+          ],
         ),
-        Positioned.fromRect(
-          rect: pinRect,
-          child: LiftedPinView(
-            key: SampleKeys.liftedPin,
-            pin: pin,
-            openProgress: openProgress,
-          ),
-        ),
-        for (final action in PinAction.values)
-          _AnimatedActionButton(
-            action: action,
-            pressPoint: pressPoint,
-            targetCenter: buttonCenters[action.index],
-            highlighted: highlightedAction == action,
-            openProgress: openProgress,
-          ),
-      ],
+        child: child,
+      ),
     );
   }
 }
 
-/// 開閉の進み具合に応じて、押下点と最終位置のあいだを動きながら現れる/戻る
-/// アクションボタン1つ。拡大・不透明度も同じ進み具合で動く。
-class _AnimatedActionButton extends StatelessWidget {
-  const _AnimatedActionButton({
+/// One action button that appears/retreats while moving between the press
+/// point and its final position, according to how far open/close has
+/// progressed. Scale and opacity move along the same progress.
+class AnimatedActionButtonView extends StatelessWidget {
+  const AnimatedActionButtonView({
+    super.key,
     required this.action,
     required this.pressPoint,
     required this.targetCenter,
     required this.highlighted,
     required this.openProgress,
+    required this.style,
   });
 
-  final PinAction action;
+  final FanContextMenuAction action;
   final Offset pressPoint;
   final Offset targetCenter;
   final bool highlighted;
   final double openProgress;
+  final FanContextMenuStyle style;
 
   @override
   Widget build(BuildContext context) {
     final motion = _openMotionCurve.transform(openProgress);
     final fade = _openFadeCurve.transform(openProgress);
     final center = Offset.lerp(pressPoint, targetCenter, motion)!;
-    final scale = Tween<double>(
-      begin: LongPressMenuMetrics.actionButtonEnterScale,
-      end: 1.0,
-    ).transform(motion);
+    final scale = lerpDouble(style.actionButtonEnterScale, 1.0, motion)!;
     return Positioned(
-      left: center.dx - LongPressMenuMetrics.buttonDiameter / 2,
-      top: center.dy - LongPressMenuMetrics.buttonDiameter / 2,
+      left: center.dx - style.buttonDiameter / 2,
+      top: center.dy - style.buttonDiameter / 2,
       child: Opacity(
         opacity: fade,
         child: Transform.scale(
           scale: scale,
           child: ActionButtonView(
-            key: SampleKeys.actionButton(action),
             action: action,
             highlighted: highlighted,
+            style: style,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 操作を実行したことを画面下部に短く伝えるメッセージ。
-///
-/// [LongPressMenuMetrics.messageDuration] だけ表示すると自動的に [onDismissed] を
-/// 呼ぶ。フレームを刻み続ける [AnimationController] で時間を計るため、
-/// `pumpAndSettle` で消えるまで待てる (素の [Timer] だと待たずに終わってしまう)。
-class ExecuteMessageView extends StatefulWidget {
-  const ExecuteMessageView({
-    super.key,
-    required this.message,
-    required this.onDismissed,
-  });
-
-  /// 表示するメッセージ。
-  final String message;
-
-  /// 表示し終えたときに呼ぶ。
-  final VoidCallback onDismissed;
-
-  @override
-  State<ExecuteMessageView> createState() => _ExecuteMessageViewState();
-}
-
-class _ExecuteMessageViewState extends State<ExecuteMessageView>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller =
-        AnimationController(
-            vsync: this,
-            duration: LongPressMenuMetrics.messageDuration,
-          )
-          ..addStatusListener(_handleStatusChange)
-          ..forward();
-  }
-
-  void _handleStatusChange(AnimationStatus status) {
-    if (status == AnimationStatus.completed) {
-      widget.onDismissed();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller
-      ..removeStatusListener(_handleStatusChange)
-      ..dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black87,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Text(
-          widget.message,
-          style: const TextStyle(color: Colors.white),
         ),
       ),
     );

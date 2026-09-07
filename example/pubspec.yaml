@@ -1,6 +1,7 @@
-name: fan_context_menu
-description: "A long-press fan-shaped action menu: press and hold, slide to an action, release to execute."
-version: 0.1.0
+name: fan_context_menu_example
+description: "Example app for fan_context_menu."
+publish_to: 'none'
+version: 0.1.0+1
 
 environment:
   sdk: ^3.12.2
@@ -8,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  fan_context_menu:
+    path: ../
 
 dev_dependencies:
   flutter_test:

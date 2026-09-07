@@ -3,69 +3,70 @@ import 'dart:ui';
 
 import 'package:flutter/painting.dart' show EdgeInsets;
 
-import 'long_press_menu_metrics.dart';
-import 'pin.dart';
+import 'fan_context_menu_style.dart';
 
-/// 長押しメニューの扇が開く向き。
+/// The direction the long-press menu's fan opens toward.
 enum FanDirection { left, right }
 
-/// 押下点と画面サイズから扇の向きを決める。
+/// Determines the fan's direction from the press point and the host's size.
 ///
-/// 押下点の x が画面幅の半分以上なら左向き、未満なら右向き。
+/// Left when the press point's x is at least half the host's width, right
+/// otherwise.
 FanDirection fanDirectionFor({
   required Offset pressPoint,
-  required Size screenSize,
+  required Size hostSize,
 }) {
-  return pressPoint.dx >= screenSize.width / 2
+  return pressPoint.dx >= hostSize.width / 2
       ? FanDirection.left
       : FanDirection.right;
 }
 
-/// 4つのアクションボタンの中心座標を計算する。
+/// Computes the center coordinates of [actionCount] action buttons.
 ///
-/// 押下点を中心とした円弧上に、[PinAction.values] の順 (弧に沿って上端側から
-/// 非表示・リアクション・共有・保存) で等間隔に並べ、はみ出す分だけ全体を平行移動して
-/// 収める。収め先は既定で画面全体だが、[padding] (安全領域) を渡すとその内側に狭まる。
+/// Places them evenly, in index order (along the arc starting from the top
+/// end), on an arc centered on the press point, then translates the whole
+/// set just enough to bring anything that overflows back in. The bounds
+/// default to the whole host, but passing [padding] (the safe area) narrows
+/// them to its interior.
+/// When [style.sweepDegrees] is exactly 360, the two ends of the arc would
+/// otherwise coincide, so the divisor for even spacing is [actionCount]
+/// (excluding the endpoint), spacing the buttons evenly around the full
+/// circle.
 List<Offset> actionButtonCenters({
   required Offset pressPoint,
-  required Size screenSize,
+  required Size hostSize,
+  required int actionCount,
+  required FanContextMenuStyle style,
   EdgeInsets padding = EdgeInsets.zero,
 }) {
-  final direction = fanDirectionFor(
-    pressPoint: pressPoint,
-    screenSize: screenSize,
-  );
+  final direction = fanDirectionFor(pressPoint: pressPoint, hostSize: hostSize);
   final centerDegrees = direction == FanDirection.left
-      ? 180 - LongPressMenuMetrics.arcLiftDegrees
-      : LongPressMenuMetrics.arcLiftDegrees;
+      ? 180 - style.arcLiftDegrees
+      : style.arcLiftDegrees;
   final dir = direction == FanDirection.left ? 1 : -1;
+  final divisor = style.sweepDegrees == 360 ? actionCount : actionCount - 1;
 
-  final actionCount = PinAction.values.length;
   final points = <Offset>[
     for (var i = 0; i < actionCount; i++)
       _pointOnArc(
         pressPoint: pressPoint,
-        radius: LongPressMenuMetrics.arcRadius,
-        degrees:
-            centerDegrees +
-            dir *
-                (i / (actionCount - 1) - 0.5) *
-                LongPressMenuMetrics.sweepDegrees,
+        radius: style.arcRadius,
+        degrees: centerDegrees + dir * (i / divisor - 0.5) * style.sweepDegrees,
       ),
   ];
 
   return _translateIntoScreen(
     points: points,
-    bounds: padding.deflateRect(Offset.zero & screenSize),
-    buttonDiameter: LongPressMenuMetrics.buttonDiameter,
+    bounds: padding.deflateRect(Offset.zero & hostSize),
+    buttonDiameter: style.buttonDiameter,
   );
 }
 
-/// 指の位置に最も近いアクションボタンを返す。
+/// Returns the index of the action button nearest the finger position.
 ///
-/// [centers] は [PinAction.values] の順に並んでいるとみなす。最も近いボタンとの
-/// 距離が [threshold] を超えていれば強調するボタンは無い (null)。
-PinAction? highlightedActionAt({
+/// Assumes [centers] is ordered by index. If the distance to the nearest
+/// button exceeds [threshold], no button is highlighted (null).
+int? highlightedActionIndexAt({
   required Offset fingerPosition,
   required List<Offset> centers,
   required double threshold,
@@ -82,10 +83,10 @@ PinAction? highlightedActionAt({
   if (nearestIndex == -1 || nearestDistance > threshold) {
     return null;
   }
-  return PinAction.values[nearestIndex];
+  return nearestIndex;
 }
 
-/// 度をラジアンに変換する。
+/// Converts degrees to radians.
 double degreesToRadians(double degrees) => degrees * math.pi / 180;
 
 Offset _pointOnArc({
@@ -100,8 +101,9 @@ Offset _pointOnArc({
   );
 }
 
-/// [points] の全外接矩形 (ボタン直径ぶんの余白込み) が [bounds] からはみ出す分だけ
-/// 全体を平行移動する。
+/// Translates the whole set of [points] just enough that the bounding
+/// rectangle of all of them (padded by the button diameter) fits inside
+/// [bounds].
 List<Offset> _translateIntoScreen({
   required List<Offset> points,
   required Rect bounds,
