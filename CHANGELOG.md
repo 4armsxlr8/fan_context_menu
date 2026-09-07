@@ -1,3 +1,7 @@
+## 0.1.1
+
+- Add a demo GIF to the README. No code changes.
+
 ## 0.1.0
 
 - Initial release. Publishes `FanContextMenuHost`, `FanContextMenuTarget`, `FanContextMenuAction`, and `FanContextMenuStyle`.

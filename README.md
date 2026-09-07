@@ -2,6 +2,10 @@
 
 A Flutter package for a fan-shaped menu: press and hold, slide to an action, release to execute. Long-pressing a target Widget opens 2 to 5 action buttons in a fan around the press point. Without lifting your finger, slide onto one of the action buttons to highlight it, and release while it's highlighted to execute that action.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/4armsxlr8/fan_context_menu/main/doc/demo.gif" width="270" alt="Press and hold a pin, slide onto the save action button, and release to execute it.">
+</p>
+
 ## Installation
 
 Local reference:
